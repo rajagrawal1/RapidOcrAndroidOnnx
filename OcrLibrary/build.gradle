@@ -2,10 +2,12 @@ plugins {
     id 'com.android.library'
     id 'org.jetbrains.kotlin.android'
     id 'kotlin-parcelize'
+    id 'maven-publish'
 }
 
 android {
     compileSdkVersion compile_sdk_version
+    ndkVersion "27.1.12297006" // NDK r27c — 16 KB page-size support
 
     defaultConfig {
         minSdkVersion min_sdk_version
@@ -49,6 +51,44 @@ android {
                 outputFileName = "${project.name}-${defaultConfig.versionName}-${variant.buildType.name}.aar"
             }
     }
+}
+
+// Publish the AAR to GitHub Packages. Built by CI (4-ABI native build + 16 KB gate).
+publishing {
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/rajagrawal1/RapidOcrAndroidOnnx")
+            credentials {
+                username = System.getenv("GITHUB_ACTOR") ?: ""
+                password = System.getenv("GITHUB_TOKEN") ?: ""
+            }
+        }
+    }
+    publications {
+        gpr(MavenPublication) {
+            groupId = 'com.rajagrawal1'
+            artifactId = 'rapidocr-onnx-android'
+            version = project_version_name
+            artifact("$buildDir/outputs/aar/${project.name}-${project_version_name}-release.aar")
+            pom {
+                name = 'RapidOcr Android ONNX'
+                description = '16 KB-aligned RapidOCR Android (ONNX Runtime) — forked & maintained from RapidAI/RapidOcrAndroidOnnx.'
+                url = 'https://github.com/rajagrawal1/RapidOcrAndroidOnnx'
+                licenses {
+                    license {
+                        name = 'Apache-2.0'
+                        url = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Ensure the AAR is assembled before publishing it (explicit artifact() does not auto-wire).
+tasks.matching { it.name ==~ /publish.*Publication.*/ }.configureEach {
+    dependsOn 'assembleRelease'
 }
 
 dependencies {

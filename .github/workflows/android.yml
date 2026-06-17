@@ -1,183 +1,124 @@
-name: Android CI
+name: Build & Publish AAR
 
 on:
   workflow_dispatch:
   push:
-    tags:
-      - '*.*.*'
+    branches: [ main ]
+    tags: [ '*.*.*' ]
 
 jobs:
-  build-and-release:
+  build:
     runs-on: ubuntu-latest
-
     env:
-      ONNX_VERSION: 1.14.0
-      ONNX_PKG_NAME: onnxruntime-1.14.0-android-shared
-
+      ONNX_VERSION: "1.23.2"
+      ONNX_ASSET: "onnxruntime-v1.23.2-android-shared.7z"
+      OPENCV_ASSET: "opencv-mobile-3.4.15-android.7z"
+      OPENCV_URL: "https://github.com/benjaminwan/OcrLiteAndroidNcnn/releases/download/1.0.0.20201007/opencv-mobile-3.4.15-android.7z"
+      MODEL_ASSET: "RapidOcrOnnxModel-v3.7z"
+      MODEL_URL: "https://github.com/RapidAI/RapidOcrAndroidOnnx/releases/download/1.0.1/RapidOcrOnnxModel-v3.7z"
+      ABIS: "arm64-v8a armeabi-v7a x86 x86_64"
     steps:
-      # 检出代码
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Unshallow
-        run: git fetch --prune --unshallow
-
-      # 设置JDK版本
-      - name: set up JDK 11
-        uses: actions/setup-java@v3
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          java-version: '11'
-          distribution: 'adopt'
+          java-version: '17'
+          distribution: 'temurin'
 
-      # 缓存依赖项
-      # https://docs.github.com/cn/actions/guides/building-and-testing-java-with-gradle#caching-dependencies
-      - name: Cache Gradle packages
-        uses: actions/cache@v3
+      - name: Set up NDK r27c
+        id: setup_ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*') }}
+          restore-keys: gradle-${{ runner.os }}-
 
-      # 下载opencv-mobile-3.4.15-android.zip并解压到OcrLibrary/src
-      - name: Download opencv-mobile-3.4.15-android.zip
+      - name: Install CMake 3.22.1
         run: |
-          wget https://github.com/benjaminwan/OcrLiteAndroidNcnn/releases/download/1.0.0.20201007/opencv-mobile-3.4.15-android.7z -O opencv-mobile-3.4.15-android.7z
-          7z x opencv-mobile-3.4.15-android.7z -aoa
-          mv opencv-mobile-3.4.15-android/sdk OcrLibrary/src
+          sdkmanager --install "cmake;3.22.1" >/dev/null 2>&1 || true
 
-      # 下载onnxruntime并解压到OcrLibrary/src/main
-      - name: Download onnxruntime
+      - name: Download OpenCV-mobile 3.4.15
         run: |
-          wget https://github.com/RapidAI/OnnxruntimeBuilder/releases/download/${{ env.ONNX_VERSION }}/${{ env.ONNX_PKG_NAME }}.7z -O ${{ env.ONNX_PKG_NAME }}.7z
-          7z x ${{ env.ONNX_PKG_NAME }}.7z -aoa
-          mv onnxruntime-shared OcrLibrary/src/main
+          wget -q "$OPENCV_URL" -O "$OPENCV_ASSET"
+          7z x -y "$OPENCV_ASSET" >/dev/null
+          rm -rf OcrLibrary/src/sdk
+          mv opencv-mobile-3.4.15-android/sdk OcrLibrary/src/sdk
 
-
-      # 下载模型并解压到OcrLibrary/src/main/assets
-      - name: Download models
+      - name: Download OnnxRuntime ${{ env.ONNX_VERSION }} prebuilts
         run: |
-          wget https://github.com/RapidAI/RapidOcrAndroidOnnx/releases/download/1.0.1/RapidOcrOnnxModel-v3.7z -O RapidOcrOnnxModel-v3.7z
-          7z x RapidOcrOnnxModel-v3.7z -aoa
-          mv assets OcrLibrary/src/main
+          wget -q "https://github.com/RapidAI/OnnxruntimeBuilder/releases/download/v${ONNX_VERSION}/${ONNX_ASSET}" -O "$ONNX_ASSET"
+          7z x -y "$ONNX_ASSET" >/dev/null
+          # New OnnxruntimeBuilder layout: onnxruntime-android-shared/<abi>/{include,lib}
+          rm -rf OcrLibrary/src/main/onnxruntime-shared
+          mkdir -p OcrLibrary/src/main/onnxruntime-shared
+          for abi in $ABIS; do
+            cp -r "onnxruntime-android-shared/$abi" "OcrLibrary/src/main/onnxruntime-shared/"
+          done
 
-      # Assemble Release apk
-      - name: Build with Gradle
-        run: chmod +x gradlew &&./gradlew assembleRelease
-
-      # 清除部分Gradle缓存
-      - name: Cleanup Gradle Cache
+      - name: Stage libonnxruntime.so into jniLibs (packaging)
         run: |
-          rm -f ~/.gradle/caches/modules-2/modules-2.lock
-          rm -f ~/.gradle/caches/modules-2/gc.properties
+          for abi in $ABIS; do
+            mkdir -p "OcrLibrary/src/main/jniLibs/$abi"
+            cp "OcrLibrary/src/main/onnxruntime-shared/$abi/lib/libonnxruntime.so" "OcrLibrary/src/main/jniLibs/$abi/"
+          done
 
-      # 上传apk 到action(需要定制)
-      # https://github.com/marketplace/actions/upload-a-build-artifact
-      - name: Upload APK/AAR
-        uses: actions/upload-artifact@v3
-        with:
-          name: outputs
-          path: |
-            app/build/outputs/apk/release/*.apk
-            OcrLibrary/build/outputs/aar/*-release.aar
-
-      # 获取 aar路径(需要定制)
-      - name: Get aar path
-        id: aar-path
+      - name: Download PP-OCRv3 models
         run: |
-          path=$(find OcrLibrary/build/outputs/aar -name '*release.aar' -type f | head -1)
-          echo "::set-output name=path::$path"
+          wget -q "$MODEL_URL" -O "$MODEL_ASSET"
+          7z x -y "$MODEL_ASSET" >/dev/null
+          rm -rf OcrLibrary/src/main/assets
+          mv assets OcrLibrary/src/main/assets
 
-      # 获取demo apk路径
-      - name: Get apk path
-        id: apk-path
-        run: |
-          path=$(find app/build/outputs/apk/release -name '*.apk' -type f | head -1)
-          echo "::set-output name=path::$path"
-
-      # 获取apk版本号
-      # https://github.com/marketplace/actions/apk-info-action
-      - name: Get apk info
-        id: apk-info
-        uses: hkusu/apk-info-action@v1
-        with:
-          apk-path: ${{ steps.apk-path.outputs.path }}
-
-      # 获取指定时区的时间
-      # https://github.com/marketplace/actions/get-time-action
-      - name: Get Time
-        id: time
-        uses: JantHsueh/get-time-action@master
-        with:
-          timeZone: 8
-
-      # 获取git log 从 previousTag 到 lastTag
-      - name: Get git log
-        id: git-log
-        run: |
-          previousTag=$(git describe --abbrev=0 --tags `git rev-list --tags --skip=1 --max-count=1`)
-          lastTag=$(git describe --abbrev=0 --tags)
-          echo "previousTag:$previousTag ~ lastTag:$lastTag"
-          log=$(git log $previousTag..$lastTag --pretty=format:'- %cd %an: %s\n' --date=format:'%Y-%m-%d %H:%M:%S')
-          echo "$log"
-          echo "::set-output name=log::"$log""
-
-      # 显示信息(需要定制)
-      - name: Show info
-        if: always()
-        run: |
-          echo '${{ steps.aar-path.outputs.path }}'
-          echo '${{ steps.apk-path.outputs.path }}'
-          echo '${{ steps.apk-info.outputs.result }}' # get apk info success or failure
-          echo '${{ steps.time.outputs.time }}'
-          echo '${{ steps.git-log.outputs.log }}'
-          echo '${{ steps.apk-info.outputs.application-name }}'
-          echo '${{ steps.apk-info.outputs.application-id }}'
-          echo '${{ steps.apk-info.outputs.version-code }}'
-          echo '${{ steps.apk-info.outputs.version-name }}'
-          echo '${{ steps.apk-info.outputs.min-sdk-version }}'
-          echo '${{ steps.apk-info.outputs.target-sdk-version }}'
-          echo '${{ steps.apk-info.outputs.compile-sdk-version }}'
-          echo '${{ steps.apk-info.outputs.uses-permissions }}'
-          echo '${{ steps.apk-info.outputs.debuggable }}'
-          echo '${{ steps.apk-info.outputs.allow-backup }}'
-          echo '${{ steps.apk-info.outputs.supports-rtl }}'
-          echo '${{ steps.apk-info.outputs.file-size }}'
-          echo '${{ steps.apk-info.outputs.readable-file-size }}'
-
-      # 向钉钉发送消息
-      # https://github.com/marketplace/actions/web-request-action
-      - name: dingtalk
-        uses: satak/webrequest-action@master
-        with:
-          url: ${{ secrets.DINGTALK_WEBHOOK }}
-          method: POST
-          payload: '{"msgtype": "text", "text": {"content": "版本更新: ${{ steps.apk-info.outputs.application-name }}-版本号: ${{ steps.apk-info.outputs.version-name }} \n 编译时间： ${{ steps.time.outputs.time }} \n 距上个正式版的更新记录: \n${{ steps.git-log.outputs.log }}"}}'
-          headers: '{"Content-Type": "application/json"}'
-
-      # 创建Changelog文件 triggered by git tag push
-      - name: Generate Changelog
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-            echo -e '${{ steps.git-log.outputs.log }}' > Release.txt
-
-      # Cat Changelog triggered by git tag push
-      - name: Cat Changelog
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-            cat Release.txt
-
-      # 创建Release triggered by git tag push(需要定制)
-      # https://github.com/marketplace/actions/gh-release
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          body_path: Release.txt
-          draft: false
-          files: |
-            ${{ steps.apk-path.outputs.path }}
-            ${{ steps.aar-path.outputs.path }}
+      - name: Build AAR (4 ABIs)
         env:
+          ANDROID_NDK_HOME: ${{ steps.setup_ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.setup_ndk.outputs.ndk-path }}
+        run: chmod +x gradlew && ./gradlew :OcrLibrary:assembleRelease --no-daemon
+
+      - name: 16 KB alignment gate (arm64-v8a, x86_64)
+        run: |
+          set -e
+          AAR=$(find OcrLibrary/build/outputs/aar -name '*release.aar' | head -1)
+          echo "AAR: $AAR"
+          rm -rf /tmp/aarch && mkdir /tmp/aarch && unzip -q "$AAR" -d /tmp/aarch
+          fail=0
+          for abi in arm64-v8a x86_64; do
+            for so in /tmp/aarch/jni/$abi/*.so; do
+              [ -f "$so" ] || continue
+              align=$(readelf -lW "$so" | awk '/^  LOAD/{print $NF}' | sort -u | tr '\n' ' ')
+              printf '%-40s LOAD p_align = {%s}\n' "$abi/$(basename $so)" "$align"
+              case "$align" in *0x1000*) echo "  ❌ 4 KB segment — BLOCKER"; fail=1 ;; *) echo "  ✅ 16 KB" ;; esac
+            done
+          done
+          exit $fail
+
+      - name: Compute AAR SHA-256
+        id: sha
+        run: |
+          AAR=$(find OcrLibrary/build/outputs/aar -name '*release.aar' | head -1)
+          sha=$(sha256sum "$AAR" | awk '{print $1}')
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+          echo "## AAR SHA-256" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "$sha" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish to GitHub Packages
+        run: ./gradlew :OcrLibrary:publish --no-daemon
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload AAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapidocr-onnx-android-aar
+          path: OcrLibrary/build/outputs/aar/*-release.aar

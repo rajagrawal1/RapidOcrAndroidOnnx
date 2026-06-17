@@ -1,14 +1,15 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(RapidOcr)
-# OnnxRuntime
-include(${CMAKE_CURRENT_SOURCE_DIR}/../onnxruntime-shared/OnnxRuntimeWrapper.cmake)
-find_package(OnnxRuntime REQUIRED)
-if (OnnxRuntime_FOUND)
-    message(STATUS "OnnxRuntime_LIBS: ${OnnxRuntime_LIBS}")
-    message(STATUS "OnnxRuntime_INCLUDE_DIRS: ${OnnxRuntime_INCLUDE_DIRS}")
-else ()
-    message(FATAL_ERROR "onnxruntime Not Found!")
-endif (OnnxRuntime_FOUND)
+
+# OnnxRuntime — prebuilt shared libs per ABI (OnnxruntimeBuilder layout: <abi>/{include,lib})
+set(ONNXRUNTIME_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../onnxruntime-shared)
+set(OnnxRuntime_INCLUDE_DIRS ${ONNXRUNTIME_DIR}/${ANDROID_ABI}/include)
+set(OnnxRuntime_LIBS ${ONNXRUNTIME_DIR}/${ANDROID_ABI}/lib/libonnxruntime.so)
+if(NOT EXISTS "${OnnxRuntime_LIBS}")
+    message(FATAL_ERROR "onnxruntime prebuilt not found at ${OnnxRuntime_LIBS}")
+endif()
+message(STATUS "OnnxRuntime_LIBS: ${OnnxRuntime_LIBS}")
+message(STATUS "OnnxRuntime_INCLUDE_DIRS: ${OnnxRuntime_INCLUDE_DIRS}")
 
 ## opencv 库
 set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/../../sdk/native/jni")
@@ -35,10 +36,13 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fomit-frame-pointer -fstrict-aliasing -
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fvisibility=hidden")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden -fvisibility-inlines-hidden")
 
+# 16 KB page-size alignment (Android 15+). NDK r27+ defaults to this; set explicitly to be certain.
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
+
 # disable rtti and exceptions
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fno-exceptions")
 
-include_directories(include)
+include_directories(include ${OnnxRuntime_INCLUDE_DIRS})
 file(GLOB OCR_SRC src/*.cpp)
 set(OCR_COMPILE_CODE ${OCR_SRC})
 

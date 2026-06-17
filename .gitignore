@@ -58,6 +58,12 @@ captures/
 # External native build folder generated in Android Studio 2.2 and later
 .externalNativeBuild
 
+# CI-downloaded native prebuilts + models (fetched by .github/workflows/android.yml)
+OcrLibrary/src/sdk/
+OcrLibrary/src/main/onnxruntime-shared/
+OcrLibrary/src/main/jniLibs/
+OcrLibrary/src/main/assets/
+
 # Google Services (e.g. APIs or Firebase)
 # google-services.json
 
