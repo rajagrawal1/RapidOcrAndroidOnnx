@@ -54,7 +54,7 @@ jobs:
 
       - name: Download OnnxRuntime ${{ env.ONNX_VERSION }} prebuilts
         run: |
-          wget -q "https://github.com/RapidAI/OnnxruntimeBuilder/releases/download/v${ONNX_VERSION}/${ONNX_ASSET}" -O "$ONNX_ASSET"
+          wget -q "https://github.com/RapidAI/OnnxruntimeBuilder/releases/download/${ONNX_VERSION}/${ONNX_ASSET}" -O "$ONNX_ASSET"
           7z x -y "$ONNX_ASSET" >/dev/null
           # New OnnxruntimeBuilder layout: onnxruntime-android-shared/<abi>/{include,lib}
           rm -rf OcrLibrary/src/main/onnxruntime-shared
