@@ -18,8 +18,11 @@ jobs:
       ONNX_ASSET: "onnxruntime-v1.23.2-android-shared.7z"
       OPENCV_ASSET: "opencv-mobile-3.4.15-android.7z"
       OPENCV_URL: "https://github.com/benjaminwan/OcrLiteAndroidNcnn/releases/download/1.0.0.20201007/opencv-mobile-3.4.15-android.7z"
-      MODEL_ASSET: "RapidOcrOnnxModel-v3.7z"
-      MODEL_URL: "https://github.com/RapidAI/RapidOcrAndroidOnnx/releases/download/1.0.1/RapidOcrOnnxModel-v3.7z"
+      # PP-OCRv5 latin (det + rec) + latin dict; v2 cls pulled from the v3 pack (arch unchanged).
+      V5_DET_URL: "https://huggingface.co/bukuroo/PPOCRv5-ONNX/resolve/main/ppocrv5-mobile-det.onnx"
+      V5_REC_URL: "https://huggingface.co/PaddlePaddle/latin_PP-OCRv5_mobile_rec_onnx/resolve/main/inference.onnx"
+      LATIN_DICT_URL: "https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/main/ppocr/utils/dict/latin_dict.txt"
+      V3_MODELS_URL: "https://github.com/RapidAI/RapidOcrAndroidOnnx/releases/download/1.0.1/RapidOcrOnnxModel-v3.7z"
       ABIS: "arm64-v8a armeabi-v7a x86 x86_64"
     steps:
       - uses: actions/checkout@v4
@@ -74,12 +77,23 @@ jobs:
             cp "OcrLibrary/src/main/onnxruntime-shared/$abi/lib/libonnxruntime.so" "OcrLibrary/src/main/jniLibs/$abi/"
           done
 
-      - name: Download PP-OCRv3 models
+      - name: Download PP-OCRv5 latin models + v2 cls
         run: |
-          wget -q "$MODEL_URL" -O "$MODEL_ASSET"
-          7z x -y "$MODEL_ASSET" >/dev/null
-          rm -rf OcrLibrary/src/main/assets
-          mv assets OcrLibrary/src/main/assets
+          set -e
+          ASSETS=OcrLibrary/src/main/assets
+          mkdir -p "$ASSETS"
+          # v5 mobile detection -> hardcoded det asset name (OcrEngine.kt loads ch_PP-OCRv3_det_infer.onnx)
+          wget -q "$V5_DET_URL" -O "$ASSETS/ch_PP-OCRv3_det_infer.onnx"
+          # v5 latin recognition -> hardcoded rec asset name
+          wget -q "$V5_REC_URL" -O "$ASSETS/ch_PP-OCRv3_rec_infer.onnx"
+          # v2 angle classifier (architecture unchanged across PP-OCR versions) — extract from the v3 pack
+          wget -q "$V3_MODELS_URL" -O v3.7z
+          7z x -y v3.7z -ov3x >/dev/null
+          cls="$(find v3x -name 'ch_ppocr_mobile_v2.0_cls_infer.onnx' | head -1)"
+          cp "$cls" "$ASSETS/"
+          # latin dictionary -> hardcoded keys asset name
+          wget -q "$LATIN_DICT_URL" -O "$ASSETS/ppocr_keys_v1.txt"
+          echo "--- assets ---"; ls -la "$ASSETS"
 
       - name: Build AAR (4 ABIs)
         env:

@@ -79,9 +79,8 @@ void CrnnNet::initModel(AAssetManager *mgr, const std::string &name, const std::
         LOGE(" txt file not found");
         return;
     }
-    keys.insert(keys.begin(),
-                "#"); // blank char for ctc
-    keys.emplace_back(" ");
+    // NOTE: do NOT prepend/append sentinel chars. Standard PaddleOCR CTC models put the
+    // blank at the LAST output channel (index = dict size); the decoder handles it directly.
     LOGI("keys size(%d)", keys.size());
 }
 
@@ -91,11 +90,15 @@ inline static size_t argmax(ForwardIterator first, ForwardIterator last) {
 }
 
 TextLine CrnnNet::scoreToTextLine(const std::vector<float> &outputData, int h, int w) {
+    // Standard CTC decode (PaddleOCR convention): blank is the extra LAST channel,
+    // i.e. w = keys.size() + 1 and blankIndex = keys.size(). Collapse consecutive
+    // duplicates and drop blank frames.
     auto keySize = keys.size();
+    int blankIndex = keySize;
     auto dataSize = outputData.size();
     std::string strRes;
     std::vector<float> scores;
-    int lastIndex = 0;
+    int lastIndex = blankIndex;
     int maxIndex;
     float maxValue;
 
@@ -108,7 +111,7 @@ TextLine CrnnNet::scoreToTextLine(const std::vector<float> &outputData, int h, i
         maxIndex = int(argmax(&outputData[start], &outputData[stop]));
         maxValue = float(*std::max_element(&outputData[start], &outputData[stop]));
 
-        if (maxIndex > 0 && maxIndex < keySize && (!(i > 0 && maxIndex == lastIndex))) {
+        if (maxIndex != blankIndex && maxIndex != lastIndex && maxIndex < keySize) {
             scores.emplace_back(maxValue);
             strRes.append(keys[maxIndex]);
         }
