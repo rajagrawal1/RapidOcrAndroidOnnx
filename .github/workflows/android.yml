@@ -70,13 +70,6 @@ jobs:
             cp -r "onnxruntime-android-shared/$abi" "OcrLibrary/src/main/onnxruntime-shared/"
           done
 
-      - name: Stage libonnxruntime.so into jniLibs (packaging)
-        run: |
-          for abi in $ABIS; do
-            mkdir -p "OcrLibrary/src/main/jniLibs/$abi"
-            cp "OcrLibrary/src/main/onnxruntime-shared/$abi/lib/libonnxruntime.so" "OcrLibrary/src/main/jniLibs/$abi/"
-          done
-
       - name: Download PP-OCRv6 tiny models + v2 cls
         run: |
           set -e
