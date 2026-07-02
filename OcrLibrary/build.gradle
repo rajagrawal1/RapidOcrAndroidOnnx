@@ -45,6 +45,14 @@ android {
         }
     }
 
+    // Exclude libonnxruntime.so from the AAR — the consumer app provides it
+    // via onnxruntime-android Maven dependency (with NNAPI/JNI symbols).
+    packagingOptions {
+        jniLibs {
+            excludes += ['**/libonnxruntime.so']
+        }
+    }
+
     libraryVariants.all {
         variant ->
             variant.outputs.all {
