@@ -97,9 +97,9 @@ jobs:
           import yaml, sys
           with open('inference.yml') as f:
               data = yaml.safe_load(f)
-          chars = data.get('character_dict', [])
+          chars = data.get('PostProcess', {}).get('character_dict', [])
           if not chars:
-              print('ERROR: no character_dict found in inference.yml', file=sys.stderr)
+              print('ERROR: no character_dict found in inference.yml PostProcess', file=sys.stderr)
               sys.exit(1)
           with open('$ASSETS/ppocr_keys_v1.txt', 'w') as out:
               for c in chars:
