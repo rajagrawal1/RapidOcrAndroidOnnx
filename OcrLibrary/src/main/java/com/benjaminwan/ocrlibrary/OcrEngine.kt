@@ -22,9 +22,9 @@ class OcrEngine(context: Context) {
     }
 
     var padding: Int = 50
-    var boxScoreThresh: Float = 0.5f
-    var boxThresh: Float = 0.3f
-    var unClipRatio: Float = 1.6f
+    var boxScoreThresh: Float = 0.2f
+    var boxThresh: Float = 0.45f
+    var unClipRatio: Float = 1.4f
     var doAngle: Boolean = true
     var mostAngle: Boolean = true
 
