@@ -143,6 +143,7 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish to GitHub Packages
+        continue-on-error: true
         run: ./gradlew :OcrLibrary:publish --no-daemon
         env:
           GITHUB_ACTOR: ${{ github.actor }}
