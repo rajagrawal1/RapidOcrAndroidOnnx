@@ -79,8 +79,8 @@ void CrnnNet::initModel(AAssetManager *mgr, const std::string &name, const std::
         LOGE(" txt file not found");
         return;
     }
-    // NOTE: do NOT prepend/append sentinel chars. Standard PaddleOCR CTC models put the
-    // blank at the LAST output channel (index = dict size); the decoder handles it directly.
+    // NOTE: do NOT prepend/append sentinel chars. Standard PaddleOCR CTC models use the
+    // layout [blank] + dict + [space]: class 0 = blank, classes 1..N = dict, class N+1 = space.
     LOGI("keys size(%d)", keys.size());
 }
 
@@ -90,11 +90,12 @@ inline static size_t argmax(ForwardIterator first, ForwardIterator last) {
 }
 
 TextLine CrnnNet::scoreToTextLine(const std::vector<float> &outputData, int h, int w) {
-    // Standard CTC decode (PaddleOCR convention): blank is the extra LAST channel,
-    // i.e. w = keys.size() + 1 and blankIndex = keys.size(). Collapse consecutive
-    // duplicates and drop blank frames.
-    auto keySize = keys.size();
-    int blankIndex = keySize;
+    // Standard CTC decode (PaddleOCR convention): output channels are laid out as
+    // [blank] + dict + [space] — blankIndex = 0, spaceIndex = keys.size() + 1.
+    // Collapse consecutive duplicates and drop blank frames.
+    const auto keySize = static_cast<int>(keys.size());
+    const int blankIndex = 0;
+    const int spaceIndex = keySize + 1;
     auto dataSize = outputData.size();
     std::string strRes;
     std::vector<float> scores;
@@ -105,15 +106,20 @@ TextLine CrnnNet::scoreToTextLine(const std::vector<float> &outputData, int h, i
     for (int i = 0; i < h; i++) {
         int start = i * w;
         int stop = (i + 1) * w;
-        if (stop > dataSize - 1) {
-            stop = (i + 1) * w - 1;
+        if (stop > dataSize) {
+            stop = dataSize;
         }
         maxIndex = int(argmax(&outputData[start], &outputData[stop]));
         maxValue = float(*std::max_element(&outputData[start], &outputData[stop]));
 
-        if (maxIndex != blankIndex && maxIndex != lastIndex && maxIndex < keySize) {
-            scores.emplace_back(maxValue);
-            strRes.append(keys[maxIndex]);
+        if (maxIndex != blankIndex && maxIndex != lastIndex) {
+            if (maxIndex == spaceIndex) {
+                scores.emplace_back(maxValue);
+                strRes.append(" ");
+            } else if (maxIndex >= 1 && maxIndex <= keySize) {
+                scores.emplace_back(maxValue);
+                strRes.append(keys[static_cast<size_t>(maxIndex - 1)]);
+            }
         }
         lastIndex = maxIndex;
     }
