@@ -15,10 +15,25 @@ class OcrEngine(
         const val numThread: Int = 4
     }
 
+    /**
+     * Native OcrLite handle owned by this instance. Each OcrEngine carries its own
+     * models, so a second engine (e.g. a Devanagari recognizer) can coexist with the
+     * default one in the same process.
+     */
+    private var nativeHandle: Long = 0
+
     init {
         System.loadLibrary("RapidOcr")
-        val ret = init(context.assets, numThread, detName, clsName, recName, keysName)
-        if (!ret) throw IllegalArgumentException()
+        nativeHandle = create(numThread, context.assets, detName, clsName, recName, keysName)
+        if (nativeHandle == 0L) throw IllegalArgumentException("Failed to create native OcrLite")
+    }
+
+    @Suppress("FinalizerSuppression")
+    protected fun finalize() {
+        if (nativeHandle != 0L) {
+            destroy(nativeHandle)
+            nativeHandle = 0L
+        }
     }
 
     var padding: Int = 50
@@ -30,23 +45,23 @@ class OcrEngine(
 
     fun detect(input: Bitmap, output: Bitmap, maxSideLen: Int) =
         detect(
+            nativeHandle,
             input, output, padding, maxSideLen,
             boxScoreThresh, boxThresh,
             unClipRatio, doAngle, mostAngle
         )
 
-    external fun init(
-        assetManager: AssetManager,
-        numThread: Int, detName: String,
-        clsName: String, recName: String, keysName: String
-    ): Boolean
+    private external fun create(
+        numThread: Int, assetManager: AssetManager,
+        detName: String, clsName: String, recName: String, keysName: String,
+    ): Long
 
-    external fun detect(
+    private external fun destroy(handle: Long)
+
+    private external fun detect(
+        handle: Long,
         input: Bitmap, output: Bitmap, padding: Int, maxSideLen: Int,
         boxScoreThresh: Float, boxThresh: Float,
-        unClipRatio: Float, doAngle: Boolean, mostAngle: Boolean
+        unClipRatio: Float, doAngle: Boolean, mostAngle: Boolean,
     ): OcrResult
-
-    external fun benchmark(input: Bitmap, loop: Int): Double
-
 }
