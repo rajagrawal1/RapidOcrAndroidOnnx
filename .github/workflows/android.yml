@@ -23,6 +23,8 @@ jobs:
       V6_REC_URL: "https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_rec_onnx/resolve/main/inference.onnx"
       V6_DICT_URL: "https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_rec_onnx/resolve/main/inference.yml"
       V3_MODELS_URL: "https://github.com/RapidAI/RapidOcrAndroidOnnx/releases/download/1.0.1/RapidOcrOnnxModel-v3.7z"
+      DEVA_REC_URL: "https://huggingface.co/PaddlePaddle/devanagari_PP-OCRv5_mobile_rec_onnx/resolve/main/inference.onnx"
+      DEVA_DICT_URL: "https://huggingface.co/PaddlePaddle/devanagari_PP-OCRv5_mobile_rec_onnx/resolve/main/inference.yml"
       ABIS: "arm64-v8a armeabi-v7a x86 x86_64"
     steps:
       - uses: actions/checkout@v4
@@ -99,7 +101,23 @@ jobs:
                   out.write(c + '\n')
           print(f'Extracted {len(chars)} characters to ppocr_keys_v1.txt')
           "
-          echo "--- assets ---"; ls -la "$ASSETS"
+          # Devanagari PP-OCRv5 mobile rec (byte-identical to the desktop-pinned artifact) + dict
+          wget -q "$DEVA_REC_URL" -O "$ASSETS/devanagari_PP-OCRv5_rec_infer.onnx"
+          echo "cb789212ce96c69d3e74728ae4309d179281d68cb3945d0616b67cafab41c986  $ASSETS/devanagari_PP-OCRv5_rec_infer.onnx" | sha256sum -c -
+          wget -q "$DEVA_DICT_URL" -O deva_inference.yml
+          python3 -c "
+          import yaml, sys
+          with open('deva_inference.yml') as f:
+              data = yaml.safe_load(f)
+          chars = data.get('PostProcess', {}).get('character_dict', [])
+          if len(chars) != 568:
+              print(f'ERROR: devanagari dict has {len(chars)} chars, expected 568', file=sys.stderr)
+              sys.exit(1)
+          with open('$ASSETS/devanagari_dict.txt', 'w') as out:
+              for c in chars:
+                  out.write(c + '\n')
+          print(f'Extracted {len(chars)} Devanagari characters to devanagari_dict.txt')
+          "
 
       - name: Build AAR (4 ABIs)
         env:

@@ -4,20 +4,20 @@ import android.content.Context
 import android.content.res.AssetManager
 import android.graphics.Bitmap
 
-class OcrEngine(context: Context) {
+class OcrEngine(
+    context: Context,
+    detName: String = "ch_PP-OCRv3_det_infer.onnx",
+    clsName: String = "ch_ppocr_mobile_v2.0_cls_infer.onnx",
+    recName: String = "ch_PP-OCRv3_rec_infer.onnx",
+    keysName: String = "ppocr_keys_v1.txt",
+) {
     companion object {
         const val numThread: Int = 4
     }
 
     init {
         System.loadLibrary("RapidOcr")
-        val ret = init(
-            context.assets, numThread,
-            "ch_PP-OCRv3_det_infer.onnx",
-            "ch_ppocr_mobile_v2.0_cls_infer.onnx",
-            "ch_PP-OCRv3_rec_infer.onnx",
-            "ppocr_keys_v1.txt"
-        )
+        val ret = init(context.assets, numThread, detName, clsName, recName, keysName)
         if (!ret) throw IllegalArgumentException()
     }
 
